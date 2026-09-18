@@ -6,8 +6,18 @@ on:
     branches:
       - main
 
+  # Trigger the pipeline when code is pushed to main
+  push:
+    branches:
+      - main
+
   # Manual trigger for the workflow
   workflow_dispatch:
+
+# Required for Azure OIDC authentication
+permissions:
+  id-token: write
+  contents: read
 
 jobs:
 
@@ -143,12 +153,12 @@ jobs:
     name: Build and Push ${{ matrix.image }}
     runs-on: ubuntu-latest
 
-    # Backend and frontend tests must pass before this job starts
+    # Tests must pass before images are built
     needs:
       - backend-test
       - frontend-test
 
-    # Build and push when code is pushed to main or manually triggered
+    # Only build/push for main pushes or manual runs
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     strategy:
@@ -179,15 +189,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
+      # =====================================================
+      # Azure OIDC Login
+      # =====================================================
       - name: Login to Azure
         uses: azure/login@v3
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
+      # =====================================================
+      # Azure Container Registry Login
+      # =====================================================
       - name: Login to Azure Container Registry
         run: |
           az acr login --name ${{ vars.ACR_NAME }}
 
+      # =====================================================
+      # Build Docker Image
+      # =====================================================
       - name: Build Docker image
         run: |
           docker build \
@@ -196,11 +217,17 @@ jobs:
             -t ${{ vars.ACR_LOGIN_SERVER }}/${{ matrix.image }}:latest \
             ./${{ matrix.service }}
 
+      # =====================================================
+      # Push SHA Tagged Image
+      # =====================================================
       - name: Push Docker image with commit SHA
         run: |
           docker push \
             ${{ vars.ACR_LOGIN_SERVER }}/${{ matrix.image }}:${{ github.sha }}
 
+      # =====================================================
+      # Push Latest Tagged Image
+      # =====================================================
       - name: Push Docker image with latest tag
         run: |
           docker push \
