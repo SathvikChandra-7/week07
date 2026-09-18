@@ -1,6 +1,11 @@
 name: CI Pipeline
 
 on:
+  # Trigger the pipeline when a Pull Request targets main
+  pull_request:
+    branches:
+      - main
+
   # Manual trigger for the workflow
   workflow_dispatch:
 
